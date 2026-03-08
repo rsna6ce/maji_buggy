@@ -23,6 +23,7 @@ static Servo servo;
 const int pinMoterForward  = 27;
 const int pinMoterBackward = 32;
 const int pinServoSteering = 25;
+const int pinSTBY8833 = 4;
 const int pinLED = 2;
 
 const int steeringRight = 50; // center - 40
@@ -86,6 +87,8 @@ void setup() {
   digitalWrite(pinMoterForward, LOW);
   pinMode(pinMoterBackward, OUTPUT);
   digitalWrite(pinMoterBackward, LOW);
+  //pinMode(pinSTBY8833, OUTPUT);
+  //digitalWrite(pinSTBY8833, HIGH);
 
   ledcSetup(MOTOR_F, pwm_freq, pwm_bit);
   ledcSetup(MOTOR_B, pwm_freq, pwm_bit);
