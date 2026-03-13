@@ -207,6 +207,11 @@ void loop() {
           steeringAngleCurr = steeringCenter + ((steeringRight - steeringCenter) * rx) / 512;
         }
       }
+      // 急ブレーキによるサイドターン
+      if (((buttons & 0x0010)||(l2 > 50)) && moterOutputForwardCurr > 0) {
+        moterOutputForwardCurr = throttleStop;
+        moterOutputBackwardCurr = throttleMax;
+      }
     }
   }
   // サーボ出力
