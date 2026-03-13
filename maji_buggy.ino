@@ -194,7 +194,7 @@ void loop() {
         } else {
           // back
           moterOutputForwardCurr = 0;
-          moterOutputBackwardCurr = (ly  * throttleMax ) / 508;
+          moterOutputBackwardCurr = min((ly  * throttleMax ) / 508, throttleMax);
         }
       }
       if (abs(rx) > 30 || abs(ry) > 30) {
