@@ -4,6 +4,7 @@
 #include "esp_wps.h"
 #include <ESP32Servo.h>
 #include <esp_task_wdt.h>
+#include "SPIFFSIni.h"
 
 #define MOTOR_F 2
 #define MOTOR_B 3
@@ -26,9 +27,9 @@ const int pinServoSteering = 25;
 const int pinSTBY8833 = 4;
 const int pinLED = 2;
 
-const int steeringRight = 50; // center - 40
-const int steeringLeft = 120; // center + 40
-const int steeringCenter = 90;
+static int steeringRight = 50; // center - 40
+static int steeringLeft = 120; // center + 40
+static int steeringCenter = 90;
 
 const int pwm_freq = 1000;
 const int pwm_bit = 8;
@@ -74,6 +75,12 @@ void onDisconnectedController(ControllerPtr ctl) {
 void setup() {
   Serial.begin(115200);
   Serial.println("hello. maji buggy.");
+
+  SPIFFSIni config("/config.ini", true);
+  if (config.exist("steeringRight")) steeringRight = config.read("steeringRight").toInt();
+  if (config.exist("steeringLeft")) steeringLeft = config.read("steeringLeft").toInt();
+  if (config.exist("steeringCenter")) steeringCenter = config.read("steeringCenter").toInt();
+  printConfig();
 
   BP32.setup(&onConnectedController, &onDisconnectedController);
   BP32.enableNewBluetoothConnections(true);
@@ -226,6 +233,75 @@ void loop() {
     Serial.print("moterOutputBackwardCurr ");
     Serial.println(moterOutputBackwardCurr);
   }
+
+  // コンフィグ
+  if (Serial.available() > 0) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();  // 前後の空白・改行を除去
+
+    if (input.length() == 0) return;  // 空行なら無視
+
+    if (input == "config") {
+      printConfig();
+    }
+    else if (input.indexOf('=') > 0) {
+      // 設定コマンド形式： steeringRight=140  のような形式を想定
+      int eqPos = input.indexOf('=');
+      String key   = input.substring(0, eqPos);
+      String value = input.substring(eqPos + 1);
+
+      key.trim();
+      value.trim();
+
+      int newValue = value.toInt();
+      // 整数変換に失敗した場合（空文字や "abc" など）は 0 になるので簡易チェック
+      if (value.length() > 0 && String(newValue) == value) {
+        bool updated = false;
+
+        if (key == "steeringRight") {
+          steeringRight = newValue;
+          updated = true;
+        }
+        else if (key == "steeringCenter") {
+          steeringCenter = newValue;
+          updated = true;
+        }
+        else if (key == "steeringLeft") {
+          steeringLeft = newValue;
+          updated = true;
+        }
+
+        if (updated) {
+          // SPIFFS に保存
+          SPIFFSIni config("/config.ini", true);
+          config.write(key.c_str(), String(newValue));
+
+          Serial.print(key);
+          Serial.print(" = ");
+          Serial.print(newValue);
+        }
+        else {
+          Serial.print("不明なキー: ");
+          Serial.println(key);
+        }
+      }
+      else {
+        Serial.println("エラー: 値が整数ではありません");
+      }
+    }
+    else {
+      Serial.println("不明なコマンド。例: config  または steeringRight=140");
+    }
+  }
+
   delay(10);
   esp_task_wdt_reset();
+}
+
+void printConfig()
+{
+  Serial.println("--- config ---");
+  Serial.print("steeringRight  = "); Serial.println(steeringRight);
+  Serial.print("steeringCenter = "); Serial.println(steeringCenter);
+  Serial.print("steeringLeft   = "); Serial.println(steeringLeft);
 }
