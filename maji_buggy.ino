@@ -1,9 +1,9 @@
 #include <stdint.h>
-#include <Bluepad32.h>
 #include <time.h>
 #include "esp_wps.h"
 #include <ESP32Servo.h>
 #include <esp_task_wdt.h>
+#include "MyconBT.h"
 #include "SPIFFSIni.h"
 
 #define MOTOR_F 2
@@ -16,8 +16,8 @@ void moter_write(int ch, int value) {
 //3 seconds WDT
 #define WDT_TIMEOUT 3
 
-// BTコントローラ（最大4台）
-ControllerPtr myControllers[BP32_MAX_GAMEPADS] = {nullptr};
+// MyconBT ESP-NOW
+MyconReceiverBT receiver;
 
 static Servo servo;
 
@@ -37,41 +37,6 @@ const int pwm_max = (1 << pwm_bit);
 const int throttleStop = 0;
 const int throttleMax = pwm_max;
 
-// BT接続時のコールバック
-void onConnectedController(ControllerPtr ctl) {
-  bool found = false;
-  for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
-    if (myControllers[i] == nullptr) {
-      myControllers[i] = ctl;
-      found = true;
-      break;
-    }
-  }
-  if (found) {
-    Serial.println("=== コントローラ接続されました！ ===");
-    Serial.print("モデル: ");
-    Serial.println(ctl->getModelName());
-
-    // MACアドレス出力（配列で取得）
-    const uint8_t* addr = ctl->getProperties().btaddr;
-    Serial.printf("MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
-                  addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
-  } else {
-    Serial.println("接続スロット満杯！");
-  }
-}
-
-// BT接続時のコールバック
-void onDisconnectedController(ControllerPtr ctl) {
-  for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
-    if (myControllers[i] == ctl) {
-      myControllers[i] = nullptr;
-      break;
-    }
-  }
-  Serial.println("=== コントローラ切断されました！ ===");
-}
-
 void setup() {
   Serial.begin(115200);
   Serial.println("hello. maji buggy.");
@@ -82,9 +47,10 @@ void setup() {
   if (config.exist("steeringCenter")) steeringCenter = config.read("steeringCenter").toInt();
   printConfig();
 
-  BP32.setup(&onConnectedController, &onDisconnectedController);
-  BP32.enableNewBluetoothConnections(true);
-  Serial.println("スキャン開始... 8BitDo SN30 Pro を B + Start 長押しで起動");
+  receiver.begin();
+  receiver.set_debug_output(false);
+  mycon_receiver_global_init(&receiver);
+  Serial.println("スキャン開始... ESP-NOW mode.");
 
   servo.setPeriodHertz(50);
   servo.attach(pinServoSteering, 400, 2400); // for sg90
@@ -94,8 +60,6 @@ void setup() {
   digitalWrite(pinMoterForward, LOW);
   pinMode(pinMoterBackward, OUTPUT);
   digitalWrite(pinMoterBackward, LOW);
-  //pinMode(pinSTBY8833, OUTPUT);
-  //digitalWrite(pinSTBY8833, HIGH);
 
   ledcSetup(MOTOR_F, pwm_freq, pwm_bit);
   ledcSetup(MOTOR_B, pwm_freq, pwm_bit);
@@ -110,115 +74,77 @@ void setup() {
   esp_task_wdt_add(NULL);
 }
 
+
 static int steeringAngleLast = steeringCenter;
 static int moterOutputForwardLast = throttleStop;
 static int moterOutputBackwardLast = throttleStop;
 void loop() {
-  BP32.update();
-
   int steeringAngleCurr = steeringCenter;
   int moterOutputForwardCurr = throttleStop;
   int moterOutputBackwardCurr = throttleStop;
 
-  // コントローラーから
-  for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
-    if (myControllers[i] != nullptr && myControllers[i]->isConnected()) {
-      ControllerPtr ctl = myControllers[i];
+  receiver.update();
+  if (receiver.is_key_down(key_A)) {
+    steeringAngleCurr = steeringRight;
+  }
+  if (receiver.is_key_down(key_Y)) {
+    steeringAngleCurr = steeringLeft;
+  }
 
-      uint16_t buttons = ctl->buttons();  // フェイス + ショルダー (A/B/X/Y/L1/R1)
-      uint8_t dpad = ctl->dpad();         // D-Pad (ビットマスク: 1=上, 2=下, 4=左, 8=右)
-      uint16_t misc = ctl->miscButtons(); // Misc (SELECT/START/HOME など)
-      int l2 = ctl->brake();              // L2トリガー (0~1023)
-      int r2 = ctl->throttle();           // R2トリガー (0~1023)
+  // D-Pad (十字キー)
+  if (receiver.is_key_down(key_Upward)) {
+    moterOutputForwardCurr = throttleMax;
+    moterOutputBackwardCurr = throttleStop;
+  }
+  if (receiver.is_key_down(key_Downward)) {
+    moterOutputForwardCurr = throttleStop;
+    moterOutputBackwardCurr = throttleMax;
+  }
+  if (receiver.is_key_down(key_Right)) {
+    steeringAngleCurr = steeringRight;
+  }
+  if (receiver.is_key_down(key_Left)) {
+    steeringAngleCurr = steeringLeft;
+  }
 
-      // ジョイスティック値取得
-      int lx = ctl->axisX();      // 左スティック X (左右)
-      int ly = ctl->axisY();      // 左スティック Y (上下)
-      int rx = ctl->axisRX();     // 右スティック X
-      int ry = ctl->axisRY();     // 右スティック Y
-
-      String output = "";
-
-      // フェイスボタン (ABXY)
-      //if (buttons & 0x0001) output += "B ";
-      if (buttons & 0x0002) {
-        //output += "A ";
-        steeringAngleCurr = steeringRight;
-      }
-      if (buttons & 0x0004) {
-        //output += "Y ";
-        steeringAngleCurr = steeringLeft;
-      }
-      //if (buttons & 0x0008) output += "X ";
-
-      // D-Pad (十字キー)
-      if (dpad & 0x01) {
-        //output += "↑ ";
-        moterOutputForwardCurr = throttleMax;
-        moterOutputBackwardCurr = throttleStop;
-      }
-      if (dpad & 0x02) {
-        //output += "↓ ";
-        moterOutputForwardCurr = throttleStop;
-        moterOutputBackwardCurr = throttleMax;
-      }
-      if (dpad & 0x04) {
-        //output += "→ ";
-        steeringAngleCurr = steeringRight;
-      }
-      if (dpad & 0x08) {
-        //output += "← ";
-        steeringAngleCurr = steeringLeft;
-      }
-
-      // L1/R1 (ショルダー)
-      //if (buttons & 0x0010) output += "L1 ";
-      //if (buttons & 0x0020) output += "R1 ";
-
-      // L2/R2 (アナログトリガー)
-      //if (l2 > 50) output += "L2(" + String(l2) + ") ";
-      //if (r2 > 50) output += "R2(" + String(r2) + ") ";
-
-      // Miscボタン (SELECT/START/HOME)
-      //if (misc & 0x01) output += "HOME ";
-      //if (misc & 0x02) output += "SELECT ";
-      //if (misc & 0x04) output += "START ";
-
-      // ジョイスティック（デッドゾーン ±30 以内は無視）
-      if (abs(lx) > 30 || abs(ly) > 30) {
-        //output += "左スティック: X=" + String(lx) + " Y=" + String(ly) + " ";
-        if (ly < 0) {
-          // forward
-          moterOutputForwardCurr = (-ly  * throttleMax ) / 512;
-          moterOutputBackwardCurr = 0;
-        } else {
-          // back
-          moterOutputForwardCurr = 0;
-          moterOutputBackwardCurr = min((ly  * throttleMax ) / 508, throttleMax);
-        }
-      }
-      if (abs(rx) > 30 || abs(ry) > 30) {
-        //output += "右スティック: X=" + String(rx) + " Y=" + String(ry) + " ";
-        if (rx < 0) {
-          // left
-          steeringAngleCurr = steeringCenter + ((steeringLeft-steeringCenter) * -rx) / 512;
-        } else {
-          // right
-          steeringAngleCurr = steeringCenter + ((steeringRight - steeringCenter) * rx) / 512;
-        }
-      }
-      // ブレーキ(L1)
-      if (buttons & 0x0010) {
-        moterOutputForwardCurr = throttleMax;
-        moterOutputBackwardCurr = throttleMax;
-      }
-      // 逆転ロックによるサイドターン(L2)
-      if ((l2 > 50) && (moterOutputForwardCurr > 0)) {
-        moterOutputForwardCurr = throttleStop;
-        moterOutputBackwardCurr = throttleMax;
-      }
+  // ジョイスティック（デッドゾーン ±30 以内は無視）
+  int lx = receiver.get_joy1_x();
+  int ly = receiver.get_joy1_y();
+  if (abs(lx) > 30 || abs(ly) > 30) {
+    // 左スティック
+    if (ly < 0) {
+      // forward
+      moterOutputForwardCurr = (-ly  * throttleMax ) / 512;
+      moterOutputBackwardCurr = 0;
+    } else {
+      // back
+      moterOutputForwardCurr = 0;
+      moterOutputBackwardCurr = min((ly  * throttleMax ) / 508, throttleMax);
     }
   }
+  int rx = receiver.get_joy2_x();
+  int ry = receiver.get_joy2_y();
+  if (abs(rx) > 30 || abs(ry) > 30) {
+    // 右スティック
+    if (rx < 0) {
+      // left
+      steeringAngleCurr = steeringCenter + ((steeringLeft-steeringCenter) * -rx) / 512;
+    } else {
+      // right
+      steeringAngleCurr = steeringCenter + ((steeringRight - steeringCenter) * rx) / 512;
+    }
+  }
+  // ブレーキ(L1)
+  if (receiver.is_key_down(key_L1)) {
+    moterOutputForwardCurr = throttleMax;
+    moterOutputBackwardCurr = throttleMax;
+  }
+  // 逆転ロックによるサイドターン(L2)
+  if ((receiver.is_key_down(key_L2)) && (moterOutputForwardCurr > 0)) {
+    moterOutputForwardCurr = throttleStop;
+    moterOutputBackwardCurr = throttleMax;
+  }
+
   // サーボ出力
   if (steeringAngleLast != steeringAngleCurr) {
       servo.write(steeringAngleCurr);
