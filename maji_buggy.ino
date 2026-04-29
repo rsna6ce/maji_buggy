@@ -47,11 +47,6 @@ void setup() {
   if (config.exist("steeringCenter")) steeringCenter = config.read("steeringCenter").toInt();
   printConfig();
 
-  receiver.begin();
-  receiver.set_debug_output(false);
-  mycon_receiver_global_init(&receiver);
-  Serial.println("スキャン開始... ESP-NOW mode.");
-
   servo.setPeriodHertz(50);
   servo.attach(pinServoSteering, 400, 2400); // for sg90
   servo.write(steeringCenter);
@@ -61,11 +56,17 @@ void setup() {
   pinMode(pinMoterBackward, OUTPUT);
   digitalWrite(pinMoterBackward, LOW);
 
+  receiver.begin();
+  receiver.set_debug_output(false);
+  mycon_receiver_global_init(&receiver);
+  Serial.println("スキャン開始... ESP-NOW mode.");
+
+ 
   ledcSetup(MOTOR_F, pwm_freq, pwm_bit);
   ledcSetup(MOTOR_B, pwm_freq, pwm_bit);
   ledcAttachPin(pinMoterForward, MOTOR_F);
   ledcAttachPin(pinMoterBackward, MOTOR_B);
-  
+
   pinMode(pinLED, OUTPUT);
   digitalWrite(pinLED, LOW);
 
