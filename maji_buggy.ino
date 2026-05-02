@@ -14,7 +14,7 @@ void moter_write(int ch, int value) {
 
 
 //3 seconds WDT
-#define WDT_TIMEOUT 3
+#define WDT_TIMEOUT 1
 
 // MyconBT ESP-NOW
 MyconReceiverBT receiver;
@@ -230,6 +230,9 @@ void loop() {
       Serial.println("不明なコマンド。例: config  または steeringRight=140");
     }
   }
+
+  // blink
+  digitalWrite(pinLED, ((millis() / 100) & 0x0001));
 
   delay(10);
   esp_task_wdt_reset();
