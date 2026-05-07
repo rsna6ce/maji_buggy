@@ -24,7 +24,7 @@ static Servo servo;
 const int pinMoterForward  = 27;
 const int pinMoterBackward = 32;
 const int pinServoSteering = 25;
-const int pinSTBY8833 = 4;
+const int pinForGND = 4;
 const int pinLED = 2;
 
 static int steeringRight = 50; // center - 40
@@ -47,6 +47,8 @@ void setup() {
   if (config.exist("steeringCenter")) steeringCenter = config.read("steeringCenter").toInt();
   printConfig();
 
+  pinMode(pinForGND, OUTPUT_OPEN_DRAIN);
+  digitalWrite(pinForGND, LOW);
   servo.setPeriodHertz(50);
   servo.attach(pinServoSteering, 400, 2400); // for sg90
   servo.write(steeringCenter);
