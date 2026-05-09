@@ -6,7 +6,7 @@
 #include <esp_wifi.h>
 
 #define MYCON_KEY_COUNT     14
-#define MYCON_RECV_TIMEOUT  500   // ms
+#define MYCON_RECV_TIMEOUT  200   // ms
 #define MYCON_DEFAULT_CHANNEL 1
 
 // キー対応テーブル（新仕様：C→X, D→Y）
