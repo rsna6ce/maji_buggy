@@ -2,7 +2,7 @@
 #include <time.h>
 #include "esp_wps.h"
 #include <ESP32Servo.h>
-#include <esp_task_wdt.h>
+#include "soc/rtc_cntl_reg.h"
 #include "MyconBT.h"
 #include "SPIFFSIni.h"
 
@@ -13,8 +13,8 @@ void moter_write(int ch, int value) {
 }
 
 
-//3 seconds WDT
-#define WDT_TIMEOUT 1
+//0.15 seconds WDT
+#define WDT_TIMEOUT_MS 150
 
 // MyconBT ESP-NOW
 MyconReceiverBT receiver;
@@ -73,8 +73,13 @@ void setup() {
   digitalWrite(pinLED, LOW);
 
   //enable panic so ESP32 restarts
-  esp_task_wdt_init(WDT_TIMEOUT, true);
-  esp_task_wdt_add(NULL);
+  WRITE_PERI_REG(RTC_CNTL_WDTCONFIG0_REG, 
+                 RTC_CNTL_WDT_EN | 
+                 RTC_CNTL_WDT_FLASHBOOT_MOD_EN);
+  WRITE_PERI_REG(RTC_CNTL_WDTCONFIG1_REG, 
+                 (3 << RTC_CNTL_WDT_STG0_S));
+  WRITE_PERI_REG(RTC_CNTL_WDTCONFIG2_REG, 15000);     // about 100ms
+  WRITE_PERI_REG(RTC_CNTL_WDTFEED_REG, 1);
 }
 
 
@@ -237,7 +242,7 @@ void loop() {
   digitalWrite(pinLED, ((millis() / 100) & 0x0001));
 
   delay(10);
-  esp_task_wdt_reset();
+  WRITE_PERI_REG(RTC_CNTL_WDTFEED_REG, 1);
 }
 
 void printConfig()
